@@ -1,0 +1,38 @@
+#!/bin/bash
+
+if [[ $# -eq 0 || $# -lt 2 ]]; then
+  echo "Usage : $0 <pssh host file> <number of slob schemas>"
+  exit 1
+fi
+
+readonly PSSH_HOST_FILE=${1}
+readonly SLOB_SCHEMAS=${2}
+
+source my_config
+
+for executable in "${PSSH}" "${PSCP}" "${JQ}"
+do
+  if ( ! type ${executable} >> /dev/null 2>&1 ); then
+    echo "${executable} not found. Exiting script!!!"
+    exit 1
+  fi
+done
+
+if [[ "${USERNAME}" != "root" ]]; then
+  SUDO="sudo"
+else
+  SUDO=""
+fi
+
+${PSSH} -l ${ORACLE_USER} -i -t0 -x "-i ${KEY}" -h ${PSSH_HOST_FILE} "cd SLOB;bash ./setup.sh IOPS ${SLOB_SCHEMAS}"
+
+sleep 10
+${PSSH} -l ${ORACLE_USER} -i -t0 -x "-i ${KEY}" -h ${PSSH_HOST_FILE} "cd SLOB; sqlplus / as sysdba <<EOFSQL
+shutdown immediate
+EOFSQL
+"
+
+${PSSH} -l ${ORACLE_USER} -i -t0 -x "-i ${KEY}" -h ${PSSH_HOST_FILE} "cd SLOB; sqlplus / as sysdba <<EOFSQL
+startup
+EOFSQL
+"
