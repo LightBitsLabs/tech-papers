@@ -55,7 +55,7 @@ oracle   hard   memlock    146800640
 oracle   soft   memlock    146800640
 EOF"
 
-${PSSH} -l ${USERNAME} -i -t0 -x "-i ${KEY}" -h ${PSSH_HOST_FILE} "${SUDO} groupadd -g 1001 oinstall;${SUDO} groupadd -g 1002 dba;${SUDO} groupadd -g 1003 oper;${SUDO} useradd -u 1001 -g oinstall -G dba,oper oracle"
+${PSSH} -l ${USERNAME} -i -t0 -x "-i ${KEY}" -h ${PSSH_HOST_FILE} "${SUDO} groupadd -g 1001 oinstall;${SUDO} groupadd -g 1002 dba;${SUDO} groupadd -g 1003 oper;${SUDO} useradd -u 1001 -g oinstall -G dba,oper ${ORACLE_USER}"
 
 ${PSSH} -l ${USERNAME} -i -t0 -x "-i ${KEY}" -h ${PSSH_HOST_FILE} "echo ${ORACLE_PASSWORD} | ${SUDO} passwd oracle --stdin"
 ${PSSH} -l ${USERNAME} -i -t0 -x "-i ${KEY}" -h ${PSSH_HOST_FILE} "echo ${ORACLE_PASSWORD} | ${SUDO} passwd root --stdin"

@@ -1,5 +1,6 @@
 readonly PSSH=path_to_pssh
 readonly PSCP=path_to_pscp
 readonly JQ=path_to_jq
+readonly ORACLE_USER=oracle
 readonly ORACLE_PASSWORD=password
 readonly KEY=path_to_your_key_pem_file
