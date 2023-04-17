@@ -7,7 +7,7 @@ fi
 
 readonly PSSH_HOST_FILE=${1}
 readonly USERNAME=${2}
-readonly ORACLE_HOME_ZIP=LINUX.X64_193000_db_home.zip
+readonly ORACLE_HOME_ZIP=full_path_to_your_oracle_install_zip_file
 readonly ORACLE_HOME=/u01/app/oracle/product/19.3/dbhome_1
 
 source my_config
@@ -26,8 +26,8 @@ else
   SUDO=""
 fi
 
-${PSCP} -l ${ORACLE_USER} -x "-i ${KEY}" -h ${PSSH_HOST_FILE} ~fedora/sagy/${ORACLE_HOME_ZIP} /tmp/
-${PSSH} -l ${USERNAME} -i -t0 -x "-i ${KEY}" -h ${PSSH_HOST_FILE} "${SUDO} su - oracle -c \"cd $ORACLE_HOME;unzip /tmp/${ORACLE_HOME_ZIP}\""
+${PSCP} -l ${ORACLE_USER} -x "-i ${KEY}" -h ${PSSH_HOST_FILE} ${ORACLE_HOME_ZIP} /tmp/
+${PSSH} -l ${USERNAME} -i -t0 -x "-i ${KEY}" -h ${PSSH_HOST_FILE} "${SUDO} su - oracle -c \"cd $ORACLE_HOME;unzip /tmp/$(basename ${ORACLE_HOME_ZIP})\""
 ${PSCP} -l ${ORACLE_USER} -x "-i ${KEY}" -h ${PSSH_HOST_FILE} oracle_install /home/${ORACLE_USER}/
 ${PSCP} -l ${ORACLE_USER} -x "-i ${KEY}" -h ${PSSH_HOST_FILE} myoracleinstall.rsp /tmp/
 ${PSSH} -l ${ORACLE_USER} -i -t0 -x "-i ${KEY}" -h ${PSSH_HOST_FILE} "wget https://github.com/therealkevinc/SLOB_2.5.4/raw/main/2021.05.12.slob_2.5.4.0.tar.gz"
