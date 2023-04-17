@@ -8,9 +8,9 @@ fi
 readonly PSSH_HOST_FILE=${1}
 readonly USERNAME=${2}
 readonly LOS_FILE=${3}
-readonly CLUSTER_NQN=$(lbcli get cluster -o json | jq -r '.subsystemNQN')
 readonly NVME_TCP_QUEUES=0
 readonly BASE_IP=$(head -1 ${LOS_FILE} | sed 's/-/./g' | awk -F. '{print $2"."$3"."$4}')
+readonly API_ADDRESS=$(head -1 ${LOS_FILE} | sed 's/-/./g' | awk -F. '{print $2"."$3"."$4"."$5}')
 
 source my_config
 
@@ -36,6 +36,17 @@ else
   nvme_tcp_queue_flag="-i ${NVME_TCP_QUEUES}"
 fi
 
+# Creating lbcli.yaml
+sed "s/HOST_IP_ADDRESS/${API_ADDRESS}/" lbcli_config_template > lbcli.yaml
+ssh -i ${KEY} centos@$(head -1 ${LOS_FILE}) "cat /opt/light-app/config/cluster1/system_jwt|awk -FLIGHTOS_JWT= '{print \"jwt: \"\$2}'" >> lbcli.yaml
+${PSSH} -l ${USERNAME} -i -t0 -x "-i ${KEY}" -h ${PSSH_HOST_FILE} "${SUDO} mkdir /etc/lbcli"
+${PSCP} -l ${USERNAME} -x "-i ${KEY}" -h ${PSSH_HOST_FILE} /usr/bin/lbcli /tmp/
+${PSCP} -l ${USERNAME} -x "-i ${KEY}" -h ${PSSH_HOST_FILE} lbcli.yaml /tmp/
+${PSSH} -l ${USERNAME} -i -t0 -x "-i ${KEY}" -h ${PSSH_HOST_FILE} "${SUDO} cp /tmp/lbcli.yaml /etc/lbcli"
+${PSSH} -l ${USERNAME} -i -t0 -x "-i ${KEY}" -h ${PSSH_HOST_FILE} "${SUDO} cp /tmp/lbcli /usr/bin/"
+readonly CLUSTER_NQN=$(lbcli get cluster -o json | jq -r '.subsystemNQN')
+
+# Creating a service on the Oracle EC2 instance to connect to the Lightbit cluster
 ${PSSH} -l ${USERNAME} -i -t0 -x "-i ${KEY}" -h ${PSSH_HOST_FILE} "${SUDO} tee /usr/local/bin/nvme_connect_lb >/dev/null <<EOF
 #!/bin/bash
 
@@ -65,8 +76,3 @@ EOF"
 ${PSSH} -l ${USERNAME} -i -t0 -x "-i ${KEY}" -h ${PSSH_HOST_FILE} "${SUDO} systemctl start nvmeconnect.service"
 ${PSSH} -l ${USERNAME} -i -t0 -x "-i ${KEY}" -h ${PSSH_HOST_FILE} "${SUDO} systemctl enable nvmeconnect.service"
 
-${PSSH} -l ${USERNAME} -i -t0 -x "-i ${KEY}" -h ${PSSH_HOST_FILE} "${SUDO} mkdir /etc/lbcli"
-${PSCP} -l ${USERNAME} -x "-i ${KEY}" -h ${PSSH_HOST_FILE} /usr/bin/lbcli /tmp/
-${PSCP} -l ${USERNAME} -x "-i ${KEY}" -h ${PSSH_HOST_FILE} /etc/lbcli/lbcli.yaml /tmp/
-${PSSH} -l ${USERNAME} -i -t0 -x "-i ${KEY}" -h ${PSSH_HOST_FILE} "${SUDO} cp /tmp/lbcli.yaml /etc/lbcli"
-${PSSH} -l ${USERNAME} -i -t0 -x "-i ${KEY}" -h ${PSSH_HOST_FILE} "${SUDO} cp /tmp/lbcli /usr/bin/"

@@ -4,7 +4,7 @@ readonly INSTANCE_TYPE=r6in.4xlarge
 # RHEL8.x (Amazon) - ami-092b43193629811af
 # Alma8.x (Amazon) - ami-09e57b4a97b8f8b10
 readonly KEY_NAME=the_name_of_your_stored_aws_key
-readonly IMAGE_ID=ami-09e57b4a97b8f8b10
+readonly IMAGE_ID=pick_one_from_above_or_use_yours
 readonly SUBNET_ID=the_subnet_id_for_the_new_instance
 readonly SECURITY_GROUP=the_securty_group_id_for_the_new_instance
 readonly ROOT_VOLUME_TYPE=gp3
@@ -47,4 +47,3 @@ if [[ "${aws_instance_status}" == "pending" ]]; then
   echo ${aws_instance_name} >> ${HOST_FILE}
 fi
 done
-    #--placement GroupName=${PLACEMENT_GROUP} \
