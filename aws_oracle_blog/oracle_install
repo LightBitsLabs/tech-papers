@@ -1,4 +1,0 @@
-cd ${ORACLE_HOME}
-./runInstaller -executePrereqs -silent -responseFile /tmp/myoracleinstall.rsp
-
-./runInstaller -silent -responseFile /tmp/myoracleinstall.rsp
