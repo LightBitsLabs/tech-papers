@@ -40,7 +40,8 @@ fi
 sed "s/HOST_IP_ADDRESS/${API_ADDRESS}/" lbcli_config_template > lbcli.yaml
 ssh -i ${KEY} centos@$(head -1 ${LOS_FILE}) "cat /opt/light-app/config/cluster1/system_jwt|awk -FLIGHTOS_JWT= '{print \"jwt: \"\$2}'" >> lbcli.yaml
 ${PSSH} -l ${USERNAME} -i -t0 -x "-i ${KEY}" -h ${PSSH_HOST_FILE} "${SUDO} mkdir /etc/lbcli"
-${PSCP} -l ${USERNAME} -x "-i ${KEY}" -h ${PSSH_HOST_FILE} /usr/bin/lbcli /tmp/
+scp -i ${KEY} centos@$(head -1 ${LOS_FILE}):/usr/bin/lbcli ./
+${PSCP} -l ${USERNAME} -x "-i ${KEY}" -h ${PSSH_HOST_FILE} ./lbcli /tmp/
 ${PSCP} -l ${USERNAME} -x "-i ${KEY}" -h ${PSSH_HOST_FILE} lbcli.yaml /tmp/
 ${PSSH} -l ${USERNAME} -i -t0 -x "-i ${KEY}" -h ${PSSH_HOST_FILE} "${SUDO} cp /tmp/lbcli.yaml /etc/lbcli"
 ${PSSH} -l ${USERNAME} -i -t0 -x "-i ${KEY}" -h ${PSSH_HOST_FILE} "${SUDO} cp /tmp/lbcli /usr/bin/"
