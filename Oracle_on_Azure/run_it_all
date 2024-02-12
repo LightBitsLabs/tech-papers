@@ -3,7 +3,12 @@
 readonly PSSH_HOST_FILE=<full path to the pssh host file>
 readonly AZURE_USER=azureuser
 readonly LB_HOST_FILE=<full path to the Lightbits pssh host file>
-readonly NUMBER_OF_SCHEMAS=16
+readonly NUMBER_OF_SCHEMAS=24
+readonly SIZE_OF_LB_VOLUME=35
+# for ORACLE_STORAGE_DIST please either:
+# RAID0 for creating NUMBER_OF_SCHEMAS Lightbits volumes and then raid0 these volumes, creating one bigfile tablespaces on top of the raid0
+# SIMPLE for creating NUMBER_OF_SCHEMAS Lightbits volumes, and then creating smallfile tablespace using single datafile (Lightbits volume)
+readonly ORACLE_STORAGE_DIST=SIMPLE
 readonly SLEEP=10
 
 echo "Starting ${0} $(date)"
@@ -39,8 +44,8 @@ echo "Running 6.copy_oracle_home"
 bash 6.copy_oracle_home ${PSSH_HOST_FILE} ${AZURE_USER}
 sleep ${SLEEP}
 
-echo "Running 7.create_volumes_raid0"
-bash 7.create_volumes_raid0 ${PSSH_HOST_FILE} ${AZURE_USER} LB ${NUMBER_OF_SCHEMAS} 3 ${SIZE_OF_SCHEMA}
+echo "Running 7.create_volumes with ${ORACLE_STORAGE_DIST} distribution of storage"
+bash 7.create_volumes ${PSSH_HOST_FILE} ${AZURE_USER} ${NUMBER_OF_SCHEMAS} 3 ${SIZE_OF_LB_VOLUME} ${ORACLE_STORAGE_DIST}
 sleep ${SLEEP}
 
 echo "Running 8.install_oracle"
@@ -48,7 +53,7 @@ bash 8.install_oracle ${PSSH_HOST_FILE} ${AZURE_USER}
 sleep ${SLEEP}
 
 echo "Running 9.create_slob_database"
-bash 9.create_slob_database ${PSSH_HOST_FILE} ${AZURE_USER} ${NUMBER_OF_SCHEMAS} ${SIZE_OF_SCHEMA}
+bash 9.create_slob_database ${PSSH_HOST_FILE} ${AZURE_USER} ${NUMBER_OF_SCHEMAS} ${SIZE_OF_LB_VOLUME}
 sleep ${SLEEP}
 
 echo "Running 10.create_slob_schemas"

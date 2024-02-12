@@ -26,6 +26,7 @@ else
   SUDO=""
 fi
 
+${PSSH} -l ${USERNAME} -i -t0 -x "-i ${KEY}" -h ${PSSH_HOST_FILE} "${SUDO} chmod 777 /mnt"
 ${PSCP} -l ${ORACLE_USER} -x "-i ${KEY}" -h ${PSSH_HOST_FILE} ${ORACLE_HOME_ZIP} /mnt/
 
 ${PSSH} -l ${USERNAME} -i -t0 -x "-i ${KEY}" -h ${PSSH_HOST_FILE} "${SUDO} su - oracle -c \"cd $ORACLE_HOME;unzip /mnt/$(basename ${ORACLE_HOME_ZIP})\""
