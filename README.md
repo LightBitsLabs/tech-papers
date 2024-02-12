@@ -1,2 +1,2 @@
 # tech-papers
-This repo holds anything that is scriptable and worth sharing for all the tech-papers we write in Lightbits publishes. 
+This repo holds anything that is scriptable and worth sharing not only for our tech-papers, but also for general usage.
