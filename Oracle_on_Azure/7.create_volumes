@@ -1,0 +1,42 @@
+#!/bin/bash
+
+if [[ $# -eq 0 || $# -lt 5 ]]; then
+  echo "Usage : $0 <pssh host file> <linux user> <number of LB volumes to create> <LB replica number 1,2 or 3> <volume size in GB>"
+  exit 1
+fi
+
+readonly PSSH_HOST_FILE=${1}
+readonly USERNAME=${2}
+readonly NUMBER_OF_VOLUMES=${3}
+readonly REPLICA_COUNT=${4}
+readonly VOLUME_SIZE=${5}
+readonly ORACLE_HOME_ZIP=LINUX.X64_193000_db_home.zip
+readonly ORACLE_HOME=/u01/app/oracle/product/19.3/dbhome_1
+readonly COMPRESSION=false
+readonly VOLUME_NAME_PREFIX=slob-vol
+readonly ORACLE_SYSTEM_VOL_SIZE=250
+
+source my_config
+
+for executable in "${PSSH}" "${PSCP}" "${JQ}"
+do
+  if ( ! type ${executable} >> /dev/null 2>&1 ); then
+    echo "${executable} not found. Exiting script!!!"
+    exit 1
+  fi
+done
+
+if [[ "${USERNAME}" != "root" ]]; then
+  SUDO="sudo"
+else
+  SUDO=""
+fi
+
+
+${PSSH} -l ${USERNAME} -i -t0 -x "-i ${KEY}" -h ${PSSH_HOST_FILE} "for ((i=1;i<${NUMBER_OF_VOLUMES};i++))
+do
+  lbcli create volume --name=\$(hostname)-${VOLUME_NAME_PREFIX}\${i} --project-name=default --acl=\$(cat /etc/nvme/hostnqn) --size=${VOLUME_SIZE}gib --compression=${COMPRESSION} --replica-count=${REPLICA_COUNT}
+done"
+
+# one more for system and undo and redo
+${PSSH} -l ${USERNAME} -i -t0 -x "-i ${KEY}" -h ${PSSH_HOST_FILE} "lbcli create volume --name=\$(hostname)-slobdb --project-name=default --acl=\$(cat /etc/nvme/hostnqn) --size=${ORACLE_SYSTEM_VOL_SIZE}gib --compression=${COMPRESSION} --replica-count=${REPLICA_COUNT}"

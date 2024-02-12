@@ -1,0 +1,8 @@
+output-format: human-readable
+dial-timeout: 5s
+command-timeout: 60s
+insecure-skip-tls-verify: true
+debug: false
+api-version: 2
+insecure-transport: false
+endpoint: https://HOST_IP_ADDRESS:443

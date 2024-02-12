@@ -1,0 +1,79 @@
+#!/bin/bash
+
+if [[ $# -eq 0 || $# -lt 3 ]]; then
+ echo "Usage : $0 <pssh host file> <linux user> <Lightbits cluster pssh host file>"
+ exit 1
+fi
+
+readonly PSSH_HOST_FILE=${1}
+readonly USERNAME=${2}
+readonly LOS_FILE=${3}
+readonly NVME_TCP_QUEUES=0
+readonly BASE_IP=$(head -1 ${LOS_FILE} | sed 's/-/./g' | awk -F. '{print $1"."$2"."$3}')
+readonly API_ADDRESS=$(head -1 ${LOS_FILE})
+
+source my_config
+
+for executable in "${PSSH}" "${PSCP}" "${JQ}"
+do
+  if ( ! type ${executable} >> /dev/null 2>&1 ); then
+    echo "${executable} not found. Exiting script!!!"
+    exit 1
+  fi
+done
+
+if [[ "${USERNAME}" != "root" ]]; then
+  SUDO="sudo"
+else
+  SUDO=""
+fi
+
+ip_list=$(cat ${LOS_FILE} | awk -F. '{print $4}' | paste -d ' ' - - -)
+
+if [[ "${NVME_TCP_QUEUES}" == "0" ]]; then
+  nvme_tcp_queue_flag=""
+else
+  nvme_tcp_queue_flag="-i ${NVME_TCP_QUEUES}"
+fi
+
+# Creating lbcli.yaml
+sed "s/HOST_IP_ADDRESS/${API_ADDRESS}/" lbcli_config_template > lbcli.yaml
+echo "jwt: ${JWT}" >> lbcli.yaml
+${PSSH} -l ${USERNAME} -i -t0 -x "-i ${KEY}" -h ${PSSH_HOST_FILE} "${SUDO} mkdir /etc/lbcli"
+scp -i ${KEY} ${USERNAME}@$(head -1 ${LOS_FILE}):/usr/bin/lbcli ./
+${PSCP} -l ${USERNAME} -x "-i ${KEY}" -h ${PSSH_HOST_FILE} ./lbcli /tmp/
+${PSCP} -l ${USERNAME} -x "-i ${KEY}" -h ${PSSH_HOST_FILE} lbcli.yaml /tmp/
+${PSSH} -l ${USERNAME} -i -t0 -x "-i ${KEY}" -h ${PSSH_HOST_FILE} "${SUDO} cp /tmp/lbcli.yaml /etc/lbcli"
+${PSSH} -l ${USERNAME} -i -t0 -x "-i ${KEY}" -h ${PSSH_HOST_FILE} "${SUDO} cp /tmp/lbcli /usr/bin/"
+readonly CLUSTER_NQN=$(lbcli get cluster -o json | jq -r '.subsystemNQN')
+
+# Creating a service on the Oracle EC2 instance to connect to the Lightbit cluster
+${PSSH} -l ${USERNAME} -i -t0 -x "-i ${KEY}" -h ${PSSH_HOST_FILE} "${SUDO} tee /usr/local/bin/nvme_connect_lb >/dev/null <<EOF
+#!/bin/bash
+
+for i in ${ip_list}
+do
+  nvme connect -t tcp -s 4420 -a ${BASE_IP}.\\\${i} -n ${CLUSTER_NQN} ${nvme_tcp_queue_flag} -l -1
+done
+EOF"
+
+${PSSH} -l ${USERNAME} -i -t0 -x "-i ${KEY}" -h ${PSSH_HOST_FILE} "${SUDO} chmod u+x /usr/local/bin/nvme_connect_lb"
+
+${PSSH} -l ${USERNAME} -i -t0 -x "-i ${KEY}" -h ${PSSH_HOST_FILE} "${SUDO} tee /usr/lib/systemd/system/nvmeconnect.service <<EOF
+[Unit]
+Description=Connect via nvme connect
+ConditionPathExists=/usr/local/bin/nvme_connect_lb
+After=network-online.target
+Before=remote-fs-pre.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/nvme_connect_lb
+
+[Install]
+WantedBy=default.target
+EOF"
+
+${PSSH} -l ${USERNAME} -i -t0 -x "-i ${KEY}" -h ${PSSH_HOST_FILE} "${SUDO} systemctl start nvmeconnect.service"
+${PSSH} -l ${USERNAME} -i -t0 -x "-i ${KEY}" -h ${PSSH_HOST_FILE} "${SUDO} systemctl enable nvmeconnect.service"
+
