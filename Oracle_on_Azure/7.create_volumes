@@ -1,7 +1,7 @@
 #!/bin/bash
 
 if [[ $# -eq 0 || $# -lt 6 ]]; then
-  echo "Usage : $0 <pssh host file> <linux user> <number of LB volumes to create> <LB replica number 1,2 or 3> <volume size in GB (35 or 75 are allowed)> <type of storage distribution (either RAID0 or SIMPLE)"
+  echo "Usage : $0 <pssh host file> <linux user> <number of LB volumes to create> <LB replica number 1,2 or 3> <volume size in GB (if you choose SIMPLE distribution of storage the only value is 35)> <type of storage distribution (either RAID0 or SIMPLE)"
   exit 1
 fi
 
@@ -30,8 +30,8 @@ do
 done
 
 if [[ ${ORACLE_STORAGE_DIST} == "SIMPLE" ]]; then
-  if [[ ${VOLUME_SIZE} != 35 && ${VOLUME_SIZE} != 75 ]]; then
-    echo "volume size size must match either 35 or 75"
+  if [[ ${VOLUME_SIZE} != 35 ]]; then
+    echo "volume size size must match 35"
     exit 1
   fi
 fi
@@ -44,7 +44,7 @@ fi
 
 if [[ ${ORACLE_STORAGE_DIST} == "SIMPLE" ]]; then
   ${PSCP} -l ${ORACLE_USER} -x "-i ${KEY}" -h ${PSSH_HOST_FILE} create_oracle_lightbits_volumes /tmp/
-  ${PSSH} -l ${USERNAME} -i -t0 -x "-i ${KEY}" -h ${PSSH_HOST_FILE} "${SUDO} bash /tmp/create_oracle_lightbits_volumes ${NUMBER_OF_VOLUMES} ${NUMBER_OF_REPLICAS} ${VOLUME_SIZE} "
+  ${PSSH} -l ${USERNAME} -i -t0 -x "-i ${KEY}" -h ${PSSH_HOST_FILE} "${SUDO} bash /tmp/create_oracle_lightbits_volumes ${NUMBER_OF_VOLUMES} ${REPLICA_COUNT} ${VOLUME_SIZE} "
 else
   ${PSSH} -l ${USERNAME} -i -t0 -x "-i ${KEY}" -h ${PSSH_HOST_FILE} "for ((i=0;i<${NUMBER_OF_VOLUMES};i++))
   do

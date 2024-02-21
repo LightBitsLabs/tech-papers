@@ -1,13 +1,15 @@
 #!/bin/bash
 
-if [[ $# -eq 0 || $# -lt 3 ]]; then
-  echo "Usage : $0 <pssh host file> <linux user> <number of schemas to built (16 is a good number)>"
+if [[ $# -eq 0 || $# -lt 4 ]]; then
+  echo "Usage : $0 <pssh host file> <linux user> <number of schemas to built. for SIMPLE storage distribution must be either 16 or 24, for RAID0 any number is good, 16 is a good starting point in general> <type of storage distribution (either RAID0 or SIMPLE)> <if using SIMPLE, please use 35>"
   exit 1
 fi
 
 readonly PSSH_HOST_FILE=${1}
 readonly USERNAME=${2}
 readonly SCHEMA=${3}
+readonly ORACLE_STORAGE_DIST=${4}
+readonly DBFSIZE=${5}
 readonly ORACLE_HOME=/u01/app/oracle/product/19.3/dbhome_1
 
 source my_config
@@ -19,6 +21,21 @@ do
     exit 1
   fi
 done
+
+if [[ ${ORACLE_STORAGE_DIST} == "SIMPLE" ]]; then
+  if [[ ${DBFSIZE} == "" && ${ORACLE_STORAGE_DIST} == "SIMPLE" ]];then
+    echo "For SIMPLE distribution of storage you must spply volume size as well"
+    exit 1
+  fi
+  if [[ ${DBFSIZE} != 35 ]]; then
+    echo "volume size size must match either 35"
+    exit 1
+  fi
+  if [[ ${SCHEMA} != 16 && ${SCHEMA} != 24 ]]; then
+    echo "number of schemas must match either 16 or 24"
+    exit 1
+  fi
+fi
 
 if [[ "${USERNAME}" != "root" ]]; then
   SUDO="sudo"
@@ -49,9 +66,17 @@ EOFSQL
 "
 
 echo "starting to create the SLOB IOPS tablespace"
-${PSSH} -l ${ORACLE_USER} -i -t0 -x "-i ${KEY}" -h ${PSSH_HOST_FILE} "cd SLOB/misc/create_database_kit; sqlplus / as sysdba <<EOFSQL
+if [[ ${ORACLE_STORAGE_DIST} == "SIMPLE" ]]; then
+  echo "using ${SCHEMA} tablespaces/datafiles with size of ${DBFSIZE}GB - my_iops_tbs_${SCHEMA}dbf_${DBFSIZE}GB.sql"
+  ${PSSH} -l ${ORACLE_USER} -i -t0 -x "-i ${KEY}" -h ${PSSH_HOST_FILE} "cd SLOB/misc/create_database_kit; sqlplus / as sysdba <<EOFSQL
+@my_iops_tbs_${SCHEMA}dbf_${DBFSIZE}GB.sql
+EOFSQL
+"
+  ${PSSH} -l ${ORACLE_USER} -i -t0 -x "-i ${KEY}" -h ${PSSH_HOST_FILE} "cd SLOB; cp myslob.conf_${DBFSIZE}GB slob.conf"
+else
+  ${PSSH} -l ${ORACLE_USER} -i -t0 -x "-i ${KEY}" -h ${PSSH_HOST_FILE} "cd SLOB/misc/create_database_kit; sqlplus / as sysdba <<EOFSQL
 @my_iops_tbs.sql
 EOFSQL
 "
-
-${PSSH} -l ${ORACLE_USER} -i -t0 -x "-i ${KEY}" -h ${PSSH_HOST_FILE} "cd SLOB; cp myslob.conf slob.conf"
+  ${PSSH} -l ${ORACLE_USER} -i -t0 -x "-i ${KEY}" -h ${PSSH_HOST_FILE} "cd SLOB; cp myslob.conf slob.conf"
+fi
