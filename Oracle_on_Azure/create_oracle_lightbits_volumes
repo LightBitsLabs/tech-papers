@@ -1,13 +1,13 @@
 #!/bin/bash
 
-if [[ $# -eq 0 || $# -lt 3 ]]; then
-  echo "Usage : $0 <number of volumes to create> <replica count> <block volume size in GB, 35 or 75>"
+if [[ $# -eq 0 || $# -lt 2 ]]; then
+  echo "Usage : $0 <number of volumes to create> <replica count>"
   exit 1
 fi
 
 readonly NUMBER_OF_VOLUMES=${1}
 readonly REPLICA_COUNT=${2}
-readonly VOLUME_SIZE=${3}
+readonly VOLUME_SIZE=35
 readonly COMPRESSION=false
 readonly VOLUME_NAME_PREFIX=slob-vol
 readonly HOST_NAME=$(hostname)

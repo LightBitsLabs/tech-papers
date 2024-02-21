@@ -44,7 +44,7 @@ fi
 
 if [[ ${ORACLE_STORAGE_DIST} == "SIMPLE" ]]; then
   ${PSCP} -l ${ORACLE_USER} -x "-i ${KEY}" -h ${PSSH_HOST_FILE} create_oracle_lightbits_volumes /tmp/
-  ${PSSH} -l ${USERNAME} -i -t0 -x "-i ${KEY}" -h ${PSSH_HOST_FILE} "${SUDO} bash /tmp/create_oracle_lightbits_volumes ${NUMBER_OF_VOLUMES} ${REPLICA_COUNT} ${VOLUME_SIZE} "
+  ${PSSH} -i -t0 -x "-i ${KEY}" -l ${USERNAME} -h ${PSSH_HOST_FILE} "${SUDO} bash /tmp/create_oracle_lightbits_volumes ${NUMBER_OF_VOLUMES} ${REPLICA_COUNT} ${VOLUME_SIZE}"
 else
   ${PSSH} -l ${USERNAME} -i -t0 -x "-i ${KEY}" -h ${PSSH_HOST_FILE} "for ((i=0;i<${NUMBER_OF_VOLUMES};i++))
   do
@@ -52,7 +52,7 @@ else
   done"
 
   # one more for system and undo and redo
-  ${PSSH} -l ${USERNAME} -i -t0 -x "-i ${KEY}" -h ${PSSH_HOST_FILE} "lbcli create volume --name=\$(hostname)-slobdb --project-name=default --acl=\$(cat /etc/nvme/hostnqn) --size=${ORACLE_SYSTEM_VOL_SIZE}gib --compression=${COMPRESSION} --replica-count=${REPLICA_COUNT}"
+  ${PSSH} -i -t0 -x "-i ${KEY}" -l ${USERNAME} -h ${PSSH_HOST_FILE} "lbcli create volume --name=\$(hostname)-slobdb --project-name=default --acl=\$(cat /etc/nvme/hostnqn) --size=${ORACLE_SYSTEM_VOL_SIZE}gib --compression=${COMPRESSION} --replica-count=${REPLICA_COUNT}"
 
   sleep 20
 
