@@ -18,6 +18,21 @@ spec:
               nova ALL = (root) NOPASSWD: /usr/bin/nova-rootwrap /etc/nova/rootwrap.conf *
               nova ALL = (root) SETENV: NOPASSWD: /usr/bin/privsep-helper *
 
+        - name: Create /run/lightos directory
+          ansible.builtin.file:
+            path: /run/lightos
+            state: directory
+            mode: '0755'
+            owner: root
+            group: root
+
+        - name: Create tmpfiles.d rule for /run/lightos persistence
+          ansible.builtin.copy:
+            dest: /etc/tmpfiles.d/lightos.conf
+            mode: '0644'
+            content: |
+              d /run/lightos 0755 root root -
+
         - name: Patch nova_compute.json with Lightbits config
           ansible.builtin.shell: |
             jq '

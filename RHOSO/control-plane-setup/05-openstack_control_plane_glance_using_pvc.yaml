@@ -49,9 +49,11 @@ spec:
             nodeSelector:
               kubernetes.io/hostname: rack02-server58
             customServiceConfig: |
-              [lightos]
+              [DEFAULT]
+              enabled_backends = lightbits
+              [lightbits]
               volume_driver = cinder.volume.drivers.lightos.LightOSVolumeDriver
-              volume_backend_name = lightos
+              volume_backend_name = lightbits
               lightos_api_address = 192.168.17.220
               lightos_api_port = 443
               lightos_jwt = eyJhbGciOiJSUzI1NiIsImtpZCI6InN5c3RlbTpyb290IiwidHlwIjoiSldUIn0.eyJpc3MiOiIvYW5zaWJsZS9saWdodG9zLWNlcnRpZmljYXRlcy9jZXJ0LWxiLWFkbWluLWtleS5wZW0iLCJyb2xlcyI6WyJzeXN0ZW06Y2x1c3Rlci1hZG1pbiJdLCJhdWQiOiJMaWdodE9TIiwic3ViIjoibGlnaHRvcy1jbGllbnQiLCJpYXQiOjE3NTczNTgxMzIsImV4cCI6MTc4ODg5NDEzMn0.W5baiXedwgp_paCsxVkSuT4-9qo0I5U8Z0vgrz1Ll49hebFfm1PPp8KjW44ZTAROejkSuL_ZJRwzW6lDSbQK_KXx3N2hGBt4899Na34bkDNKO-O8Ge7Yk4q5TKxtLTEXasRaRW5aGQlhm15bBpnI4s9zzf8aSzCvwhtbIXSReS4YtWd02ZIGq7wne_wVg_aOBLAqWbVMVGBaL2PoJMfirkHbfcLk7ow7m5G5H7js8cTUZFFCXDeasLJ6Kxu72MZknbH5Nj3pJPcPUimuqveZzjEELoNz_rep_sHZQkrCbrlDPNS5pOfJKTm5wrHn3IdtXaao_B-lEANUPhCfxNjbVQ
