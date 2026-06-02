@@ -1,0 +1,54 @@
+apiVersion: network.openstack.org/v1beta1
+kind: NetConfig
+metadata:
+  name: openstacknetconfig
+  namespace: openstack
+spec:
+  networks:
+  - name: CtlPlane
+    dnsDomain: ctlplane.rhoso
+    subnets:
+    - name: subnet-ctlplane
+      allocationRanges: [{start: 192.168.25.30, end: 192.168.25.33}]
+      cidr: 192.168.16.0/20 
+      gateway: 192.168.16.1
+  
+  - name: InternalApi
+    dnsDomain: internalapi.rhoso
+    subnets:
+    - name: subnet-internalapi
+      allocationRanges: [{start: 192.168.25.34, end: 192.168.25.41}]
+      # Covers 192.168.0.0 - 192.168.31.255
+      cidr: 192.168.0.0/19 
+
+  - name: Storage
+    dnsDomain: storage.rhoso
+    subnets:
+    - name: subnet-storage
+      allocationRanges: [{start: 10.25.200.70, end: 10.25.200.80}]
+      cidr: 10.25.200.0/24 
+
+  - name: Tenant
+    dnsDomain: tenant.rhoso
+    subnets:
+    - name: subnet-tenant
+      allocationRanges: [{start: 192.168.25.42, end: 192.168.25.45}]
+      # Covers 192.168.0.0 - 192.168.63.255
+      cidr: 192.168.0.0/18 
+
+  - name: External
+    dnsDomain: external.rhoso
+    subnets:
+    - name: subnet-external
+      allocationRanges: [{start: 192.168.25.55, end: 192.168.25.57}]
+      # Covers 192.168.0.0 - 192.168.127.255
+      cidr: 192.168.0.0/17 
+      gateway: 192.168.16.1
+
+  - name: LightbitsMgmt
+    dnsDomain: lightbits.rhoso
+    subnets:
+    - name: subnet-lightbits
+      allocationRanges: [{start: 192.168.17.100, end: 192.168.17.120}]
+      # Covers 192.168.16.0 - 192.168.17.255
+      cidr: 192.168.16.0/23

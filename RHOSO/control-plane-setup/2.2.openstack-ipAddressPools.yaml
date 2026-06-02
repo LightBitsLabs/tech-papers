@@ -1,0 +1,78 @@
+apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata:
+  name: ctlplane
+  namespace: metallb-system
+spec:
+  addresses:
+    - 192.168.25.30-192.168.25.33
+  autoAssign: true
+---
+apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata:
+  name: internalapi
+  namespace: metallb-system
+spec:
+  addresses:
+    - 192.168.25.35-192.168.25.37
+  autoAssign: true
+---
+apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata:
+  name: storage
+  namespace: metallb-system
+spec:
+  addresses:
+    - 10.25.200.61-10.25.200.65
+  autoAssign: true
+---
+apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata:
+  name: tenant
+  namespace: metallb-system
+spec:
+  addresses:
+    - 192.168.25.43-192.168.25.45
+  autoAssign: true
+---
+apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata:
+  name: designateext
+  namespace: metallb-system
+spec:
+  addresses:
+    - 192.168.25.55-192.168.25.60
+  autoAssign: true
+---
+apiVersion: metallb.io/v1beta1
+kind: L2Advertisement
+metadata:
+  name: osp-l2-adv
+  namespace: metallb-system
+spec:
+  ipAddressPools:
+    - ctlplane
+    - internalapi
+    - tenant
+    - designateext
+  interfaces:
+    - internalapi
+    - tenant
+    - designate
+    - designateext
+    - octavia
+---
+apiVersion: metallb.io/v1beta1
+kind: L2Advertisement
+metadata:
+  name: osp-storage-adv
+  namespace: metallb-system
+spec:
+  ipAddressPools:
+    - storage
+  interfaces:
+    - storage

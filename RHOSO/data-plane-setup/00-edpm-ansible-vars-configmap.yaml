@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: edpm-ansible-vars
+  namespace: openstack
+data:
+  vars.yaml: |
+    tenant_ip: 192.168.16.195
+    local_ip: 192.168.16.195
+    edpm_ovn_tunnel_ip: 192.168.16.195
+    internal_api_ip: 192.168.16.195
+    storage_ip: 10.25.200.59
+    ctlplane_ip: 192.168.16.195
+    edpm_tls_certs_enabled: "false"
+    ansible_ssh_extra_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=30"
+    edpm_podman_registry_login: true
+    edpm_sshd_configure: false
+    ovn_sb_connection: ssl:ovsdbserver-sb.openstack.svc:6642

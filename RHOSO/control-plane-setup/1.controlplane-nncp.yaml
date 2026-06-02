@@ -1,0 +1,57 @@
+apiVersion: nmstate.io/v1
+kind: NodeNetworkConfigurationPolicy
+metadata:
+  name: osp-flat-networks
+spec:
+  nodeSelector:
+    kubernetes.io/hostname: rack02-server58
+  desiredState:
+    interfaces:
+      - name: internalapi
+        type: linux-bridge
+        state: up
+        bridge:
+          options: {stp: {enabled: false}}
+        ipv4:
+          address: [{ip: 192.168.25.34, prefix-length: 20}]
+          enabled: true
+      - name: tenant
+        type: linux-bridge
+        state: up
+        bridge:
+          options: {stp: {enabled: false}}
+        ipv4:
+          address: [{ip: 192.168.25.42, prefix-length: 20}]
+          enabled: true
+      - name: storage
+        type: linux-bridge
+        state: up
+        bridge:
+          options: {stp: {enabled: false}}
+        ipv4:
+          address: [{ip: 10.25.200.60, prefix-length: 24}]
+          enabled: true
+      - name: designate
+        type: linux-bridge
+        state: up
+        bridge:
+          options: {stp: {enabled: false}}
+        ipv4:
+          address: [{ip: 192.168.25.50, prefix-length: 20}]
+          enabled: true
+      - name: designateext
+        type: linux-bridge
+        state: up
+        bridge:
+          options: {stp: {enabled: false}}
+        ipv4:
+          address: [{ip: 192.168.25.54, prefix-length: 20}]
+          enabled: true
+      - name: octavia
+        type: linux-bridge
+        state: up
+        bridge:
+          options: {stp: {enabled: false}}
+        ipv4:
+          address: [{ip: 192.168.25.46, prefix-length: 20}]
+          enabled: true

@@ -1,0 +1,51 @@
+apiVersion: dataplane.openstack.org/v1beta1
+kind: OpenStackDataPlaneNodeSet
+metadata:
+  name: openstack-edpm-ipam
+  namespace: openstack
+spec:
+  preProvisioned: true
+  networkAttachments:
+    - lightbitsmgmt
+  nodeTemplate:
+    ansible:
+      ansibleUser: cloud-admin
+      ansibleVars:
+        ansible_extra_var_files:
+          - /etc/openstack/ansible/vars.yaml
+    ansibleSSHPrivateKeySecret: dataplane-ansible-ssh-private-key-secret
+    managementNetwork: ctlplane
+    extraMounts:
+      - name: v1
+        region: r1
+        volumes:
+          - name: edpm-ansible-vars
+            configMap:
+              name: edpm-ansible-vars
+          - name: nova-compute-lightbits-config
+            configMap:
+              name: nova-compute-lightbits-config
+        mounts:
+          - name: edpm-ansible-vars
+            mountPath: /etc/openstack/ansible/vars.yaml
+            subPath: vars.yaml
+          - name: nova-compute-lightbits-config
+            mountPath: /var/lib/openstack/configs/nova/nova-20-lightbits.conf
+            subPath: nova-20-lightbits.conf
+  nodes:
+    rack03-server59:
+      hostName: rack03-server59
+      networks:
+        - name: CtlPlane
+          subnetName: subnet-ctlplane
+          fixedIP: 192.168.16.195
+  services:
+    - bootstrap
+    - download-cache
+    - configure-os
+    - ssh-known-hosts
+    - install-certs
+    - ovn
+    - libvirt
+    - nova
+    - nova-lightbits-discovery-client
