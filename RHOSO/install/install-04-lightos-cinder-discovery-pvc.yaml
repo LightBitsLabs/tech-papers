@@ -1,0 +1,48 @@
+# 07-lightos-cinder-discovery-pvc.yaml
+#
+# PVC for the LightBits discovery-client configuration directory used by
+# cinder-volume and cinder-backup pods.
+#
+# Background:
+#   The patched os-brick LightOS connector writes per-volume .conf files into
+#   /etc/discovery-client/discovery.d/ to instruct the CSI discovery-client
+#   (running on the host node) to establish NVMe-oF connections. This directory
+#   must be writable from inside the Cinder pods.
+#
+#   An emptyDir was attempted but the resulting SELinux context
+#   (container_var_lib_t) caused PermissionError 13 when the cinder process
+#   tried to write files. A PVC backed by LightBits gets the correct context
+#   (container_file_t) automatically, resolving the issue.
+#
+# Apply BEFORE applying 05-openstack_control_plane_glance_using_pvc.yaml
+#
+# oc apply -f 07-lightos-cinder-discovery-pvc.yaml
+#
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: cinder-discovery-client-pvc
+  namespace: openstack
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: lb-replica1-xfs
+---
+# Separate PVC for Glance discovery-client directory.
+# Cannot share the Cinder PVC since both are ReadWriteOnce
+# and may run on different nodes.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: glance-discovery-client-pvc
+  namespace: openstack
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: lb-replica1-xfs

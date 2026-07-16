@@ -1,0 +1,135 @@
+apiVersion: dataplane.openstack.org/v1beta1
+kind: OpenStackDataPlaneService
+metadata:
+  name: nova-lightbits-discovery-client
+  namespace: openstack
+spec:
+  label: nova-lightbits-discovery-client
+  playbookContents: |
+    - hosts: all
+      become: true
+      tasks:
+        - name: Create nova sudoers file with SETENV for privsep-helper
+          ansible.builtin.copy:
+            dest: /etc/sudoers.d/nova-lightbits
+            mode: '0440'
+            content: |
+              Defaults:nova !requiretty
+              nova ALL = (root) NOPASSWD: /usr/bin/nova-rootwrap /etc/nova/rootwrap.conf *
+              nova ALL = (root) SETENV: NOPASSWD: /usr/bin/privsep-helper *
+
+        - name: Create /run/lightos directory
+          ansible.builtin.file:
+            path: /run/lightos
+            state: directory
+            mode: '0755'
+            owner: root
+            group: root
+
+        - name: Create tmpfiles.d rule for /run/lightos persistence
+          ansible.builtin.copy:
+            dest: /etc/tmpfiles.d/lightos.conf
+            mode: '0644'
+            content: |
+              d /run/lightos 0755 root root -
+
+        - name: Patch nova_compute.json with Lightbits config
+          ansible.builtin.shell: |
+            jq '
+              .environment.VIRTUAL_ENV = "1" |
+              .volumes = (
+                .volumes
+                | map(select(
+                    . != "/usr/bin/discovery-client:/usr/bin/discovery-client:ro"
+                    and . != "/etc/discovery-client:/etc/discovery-client:ro"
+                    and . != "/etc/discovery-client:/etc/discovery-client:rw,z"
+                    and . != "/run/lightos:/run/lightos:shared,z"
+                    and . != "/etc/sudoers.d/nova-lightbits:/etc/sudoers.d/nova:ro"
+                  ))
+                + [
+                    "/usr/bin/discovery-client:/usr/bin/discovery-client:ro",
+                    "/etc/discovery-client:/etc/discovery-client:rw,z",
+                    "/run/lightos:/run/lightos:shared,z",
+                    "/etc/sudoers.d/nova-lightbits:/etc/sudoers.d/nova:ro"
+                  ]
+              )
+            ' /var/lib/openstack/config/containers/nova_compute.json > /tmp/nova_compute.json.tmp
+            mv /tmp/nova_compute.json.tmp /var/lib/openstack/config/containers/nova_compute.json
+            chcon -t container_file_t /var/lib/openstack/config/containers/nova_compute.json
+
+        - name: Fix ExecStart to use EDPM wrapper script
+          ansible.builtin.shell: |
+            sed -i 's|ExecStart=/usr/bin/podman start nova_compute|ExecStart=/var/local/libexec/edpm-start-podman-container nova_compute|' \
+              /etc/systemd/system/edpm_nova_compute.service
+            systemctl daemon-reload
+
+        - name: Stop nova_compute service
+          ansible.builtin.systemd:
+            name: edpm_nova_compute
+            state: stopped
+          ignore_errors: true
+
+        - name: Force remove nova_compute container
+          ansible.builtin.shell: |
+            podman kill -s KILL nova_compute 2>/dev/null || true
+            sleep 2
+            podman rm -f nova_compute 2>/dev/null || true
+
+        - name: Recreate nova_compute container from patched JSON
+          ansible.builtin.shell: |
+            python3 -c "
+            import json, subprocess
+
+            with open('/var/lib/openstack/config/containers/nova_compute.json') as f:
+                c = json.load(f)
+
+            cmd = ['podman', 'create', '--name', 'nova_compute',
+                   '--conmon-pidfile', '/run/nova_compute.pid']
+            if c.get('privileged'): cmd += ['--privileged']
+            if c.get('net'): cmd += ['--net', c['net']]
+            if c.get('user'): cmd += ['--user', c['user']]
+            if c.get('restart'): cmd += ['--restart', c['restart']]
+            if c.get('ipc'): cmd += ['--ipc', c['ipc']]
+            if c.get('pid'): cmd += ['--pid', c['pid']]
+            if c.get('log_driver'): cmd += ['--log-driver', c['log_driver']]
+            for s in c.get('security_opt', []): cmd += ['--security-opt', s]
+            for k,v in c.get('environment', {}).items(): cmd += ['-e', f'{k}={v}']
+            for k,v in c.get('labels', {}).items(): cmd += ['--label', f'{k}={v}']
+            for v in c.get('volumes', []): cmd += ['-v', v]
+            cmd.append(c['image'])
+            cmd += c['command'].split() if isinstance(c['command'], str) else c['command']
+
+            subprocess.run(cmd, check=True)
+            "
+
+        - name: Reset failed state and start nova_compute service
+          ansible.builtin.shell: |
+            systemctl reset-failed edpm_nova_compute 2>/dev/null || true
+            systemctl start edpm_nova_compute
+
+        - name: Wait for nova_compute container to be running
+          ansible.builtin.shell: |
+            podman inspect --format '{% raw %}{{.State.Running}}{% endraw %}' nova_compute
+          register: container_state
+          until: container_state.stdout == "true"
+          retries: 30
+          delay: 5
+
+        - name: Verify Lightbits mounts and config
+          ansible.builtin.shell: |
+            podman inspect nova_compute | python3 -c "
+            import json, sys
+            binds = json.load(sys.stdin)[0]['HostConfig']['Binds']
+            sources = [b.split(':')[0] + ':' + b.split(':')[1] for b in binds]
+            required = [
+              '/usr/bin/discovery-client:/usr/bin/discovery-client',
+              '/etc/discovery-client:/etc/discovery-client',
+              '/run/lightos:/run/lightos',
+              '/etc/sudoers.d/nova-lightbits:/etc/sudoers.d/nova'
+            ]
+            missing = [v for v in required if v not in sources]
+            if missing:
+              print('MISSING:', missing)
+              sys.exit(1)
+            print('OK: all Lightbits mounts verified')
+            "

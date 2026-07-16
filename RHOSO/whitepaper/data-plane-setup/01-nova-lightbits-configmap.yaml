@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nova-compute-lightbits-config
+  namespace: openstack
+data:
+  nova-20-lightbits.conf: |-
+    [privsep_osbrick]
+    helper_command = sudo -E /usr/bin/privsep-helper --config-file /etc/nova/nova.conf --config-dir /etc/nova/nova.conf.d
