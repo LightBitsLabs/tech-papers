@@ -4,7 +4,7 @@ This guide explains how to integrate Lightbits disaggregated NVMe/TCP storage wi
 
 ---
 
-> **For in-depth technical background** on how these patches work, why they are needed, and the full OpenStackControlPlane CR used in the reference deployment, see the [`../blog-whitepaper/`](../blog-whitepaper/) directory.
+> **For in-depth technical background** on how these patches work, why they are needed, and the full OpenStackControlPlane CR used in the reference deployment, see the [`../whitepaper/`](../whitepaper/) directory.
 
 ---
 
@@ -50,7 +50,8 @@ The Lightbits CSI DaemonSet (`lb-csi-node`) runs on every OCP worker node and pr
 - Lightbits Operator installed on the OCP cluster (provides the `lb-csi-node` DaemonSet)
 - Lightbits CSI StorageClass created (referenced as `lb-replica1-xfs` in this guide)
 - JWT token for Lightbits API authentication
-- All EDPM nodes need the Discovery Client installed (follow regular cinder install from the Lightbits documentation page)
+- All EDPM nodes need the Discovery Client installed - **before** installing the RHOSO cinder driver. 
+  Follow [Discovery-client Deployment and Usage](https://documentation.lightbitslabs.com/lightbits-private-cloud/discovery-client-deployment-and-usage)
 
 ---
 
@@ -75,11 +76,7 @@ oc apply -f 01-nova-Lightbits-configmap.yaml
 oc apply -f 02-nova-Lightbits-service.yaml
 ```
 
-Add `nova-Lightbits-discovery-client` to your `OpenStackDataPlaneNodeSet` services list, then run the deployment. This configures on each EDPM node:
-- Sudoers entry for `nova-compute` privsep-helper with `SETENV` privileges
-- `/run/lightos` directory (persistent via tmpfiles.d)
-- Nova container mounts for Lightbits volumes
-- Lightbits discovery-client (systemd service listening on port 6060)
+Add `nova-Lightbits-discovery-client` to your `OpenStackDataPlaneNodeSet` services list, then run the deployment. 
 
 ---
 
@@ -120,14 +117,9 @@ EOF
 oc apply -f 04-lightos-cinder-discovery-pvc.yaml
 ```
 
-**Why a PVC for the discovery-client directory?**
-The Lightbits os-brick connector writes `.conf` files to `/etc/discovery-client/discovery.d/` inside Cinder pods. An `emptyDir` volume gets the wrong SELinux context (`container_var_lib_t`) which prevents writes. A Lightbits PVC gets the correct context (`container_file_t`) automatically.
-
 ---
 
 ## Step 3: Apply os-brick and Driver Patches
-
-In RHOSO, Cinder pods run with their own network namespace (`hostNetwork: false`). This means `localhost` inside a Cinder pod does not reach the host. The Lightbits discovery-client runs on the host listening on `0.0.0.0:6060`, but the standard os-brick connector tries `localhost:6060` which fails.
 
 Three patches are required:
 
@@ -135,34 +127,9 @@ Three patches are required:
 oc apply -f 03-lightos-osbrick-patch-configmap.yaml
 ```
 
-**`lightos.py` (os-brick connector):**
-- `find_dsc()` — changed from `localhost:6060` to the node IP read from `/etc/node-hostname`
-- `get_connector_properties()` and `dsc_connect_volume()` — NQN changed from standard NVMe format (`nqn.2014-08.org.nvmexpress:uuid:...`) to Lightbits CSI format (`nqn.2019-09.com.Lightbitslabs:host:<node>.node`). This is critical: the Cinder driver sets the volume ACL using the connector NQN, and the CSI discovery-client connects using the Lightbits NQN format. If they don't match, the volume ACL is never satisfied and the NVMe device never appears.
-- `dsc_connect_volume()` — uses `shutil.move()` directly instead of `priv_lightos.move_dsc_file()`
-
-**`lightos_priv.py` (os-brick privsep module):**
-- `move_dsc_file()` — removed `@os_brick.privileged.default.entrypoint` decorator. The destination directory is world-writable; running via privsep caused SELinux denials inside OCP pods.
-
-**`lightos_driver.py` (Cinder volume driver):**
-- `vendor_name` — changed from `'Lightbits Storage'` to `'Lightbits'`. The original value contains a space which breaks the RHOSO certification tooling's override parser.
-- `storage_protocol` — changed from `constants.LIGHTOS` (`'LIGHTOS'`) to `'NVMe-oF'`. The Cinder `CapabilitiesFilter` does exact matching: volume types created with `storage_protocol: NVMe-oF` would never match a backend reporting `LIGHTOS`.
-
-These patches are mounted into Cinder pods via `extraMounts` in the `OpenStackControlPlane` CR (see Step 5). No container image changes are required.
-
 ---
 
-## Step 4: Create NFS Shares ConfigMap
-
-Cinder uses NFS for volume backups. Create a ConfigMap with the NFS export:
-
-```bash
-oc create configmap cinder-nfs-shares -n openstack \
-  --from-literal=nfs_shares="<NFS_SERVER_IP>:/path/to/export"
-```
-
----
-
-## Step 5: Deploy the Control Plane
+## Step 4: Deploy the Control Plane
 
 The `05-cinder-glance-config-snippet.yaml` file contains **only the Cinder and Glance sections** — merge them into your existing `OpenStackControlPlane` CR alongside the other services (keystone, neutron, nova, galera, etc.).
 
@@ -338,7 +305,7 @@ Glance uses a PVC-backed file store (backed by Lightbits via CSI). The `glance-i
 
 ---
 
-## Step 6: Post-Deployment OpenStack Configuration
+## Step 5: Post-Deployment OpenStack Configuration
 
 ```bash
 # Lightbits primary volume type
@@ -355,7 +322,7 @@ oc exec -n openstack openstackclient -- openstack volume type create multiattach
 
 ---
 
-## Step 7: Verify Services
+## Step 6: Verify Services
 
 ```bash
 oc exec -n openstack openstackclient -- openstack volume service list
@@ -414,18 +381,3 @@ With this setup, Lightbits provides the following capabilities to RHOSO:
 **Glance Cinder native backend** — storing Glance images directly as Cinder volumes (instead of via a PVC) is possible but has a known `ImageProxy TypeError` bug in RHOSO 18 when downloading images through the `split` layout external API pod. Nova compute EDPM nodes also cannot resolve the `glance-cinder-internal.openstack.svc` endpoint. Use the PVC-backed file store as described in this guide.
 
 **must-gather loop** — the RHOSO must-gather script enters an infinite loop when Cinder reports `free_capacity_gb = 'infinite'` (which Lightbits uses per Launchpad bug #1871371). Workaround: temporarily set `free_capacity_gb = 999999` and `total_capacity_gb = 999999` in `lightos_driver.py`, collect must-gather, then revert.
-
----
-
-## Upstream Driver Fix Recommendations
-
-The patches in `03-lightos-osbrick-patch-configmap.yaml` are deployment-layer workarounds. These should be fixed in upstream os-brick and the Lightbits Cinder driver:
-
-| Priority | Component | Fix |
-|----------|-----------|-----|
-| High | os-brick | Merge patch `e7d2cd0` — makes discovery-client address/port configurable via `[os_brick]` config options |
-| High | Cinder driver | Change `storage_protocol` to `'NVMe-oF'` |
-| High | Cinder driver | Change `vendor_name` to `'Lightbits'` (no spaces) |
-| Medium | os-brick | Remove privsep decorator from `move_dsc_file()` |
-| Medium | Cinder driver | Implement native `revert_to_snapshot()` using redirect-on-write snapshots |
-| Medium | Cinder driver | Standardize backend name — `lightos` (reported by driver) vs `Lightbits` (cinder.conf section name) |
