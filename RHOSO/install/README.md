@@ -1,48 +1,21 @@
 # Lightbits Storage Integration with RHOSO 18
 
-This guide explains how to integrate Lightbits disaggregated NVMe/TCP storage with Red Hat OpenStack Services on OpenShift (RHOSO) 18 as a Cinder block storage backend, including Nova compute (EDPM) configuration for attaching volumes to running VMs.
+This guide explains how to integrate Lightbits disaggregated NVMe/TCP storage with Red Hat OpenStack Services on OpenShift (RHOSO) 18, covering the Cinder block storage backend, Cinder backup, and Nova compute (EDPM) configuration.
 
----
-
-## Architecture
-
-```
-┌─────────────────────────────────────────────────────┐
-│           Red Hat OpenShift Cluster                 │
-│                                                     │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  │
-│  │  Worker 1   │  │  Worker 2   │  │  Worker 3   │  │
-│  │ ┌─────────┐ │  │ ┌─────────┐ │  │ ┌─────────┐ │  │
-│  │ │ cinder- │ │  │ │ cinder- │ │  │ │ cinder- │ │  │
-│  │ │ pods    │ │  │ │ pods    │ │  │ │ pods    │ │  │
-│  │ └─────────┘ │  │ └─────────┘ │  │ └─────────┘ │  │
-│  └─────────────┘  └─────────────┘  └─────────────┘  │
-│                                                     │
-│  ┌──────────────────────────────────────────────┐   │
-│  │         EDPM Compute Nodes (RHEL 9.4)        │   │
-│  │  nova-compute + KVM + Lightbits discovery    │   │
-│  └──────────────────────────────────────────────┘   │
-└──────────────────────────────┬──────────────────────┘
-                               │ NVMe/TCP
-                    ┌──────────▼──────────┐
-                    │  Lightbits Cluster  │
-                    │  (NVMe/TCP targets) │
-                    └─────────────────────┘
-```
-
-Cinder pods talk directly to the Lightbits API (create/delete/extend/snapshot volumes, set ACLs) — no local NVMe/TCP attach happens inside the Cinder pods in this configuration, so no CSI or discovery-client involvement is needed on the OCP side.
-
-Separately, EDPM compute nodes run the Lightbits discovery-client (installed directly on the RHEL host, outside OCP) so that `nova-compute` can attach Lightbits volumes to running VMs over NVMe/TCP using the stock os-brick connector.
+> **For in-depth technical background** on the architecture, see the [`../blog-whitepaper/`](../blog-whitepaper/) directory.
 
 ---
 
 ## Prerequisites
 
-- RHOSO 18 deployed on OpenShift 4.18+
-- Lightbits cluster accessible from the OpenStack storage network (Cinder pods must reach the Lightbits API; EDPM compute nodes must reach the Lightbits NVMe/TCP targets)
+- RHOSO 18.0.22 deployed on OpenShift 4.18+
+- Lightbits cluster accessible from the OCP and EDPM storage network
+- Lightbits CSI Operator installed on the OCP cluster (provides the `lb-csi-node` DaemonSet)
+- Lightbits CSI StorageClass created (referenced here as `lb-replica1-xfs` in this guide)
 - JWT token for Lightbits API authentication
 - All EDPM nodes need the Discovery Client installed - **before** installing the RHOSO cinder driver.
   Follow [Discovery-client Deployment and Usage](https://documentation.lightbitslabs.com/lightbits-private-cloud/discovery-client-deployment-and-usage)
+
 
 ---
 
@@ -50,74 +23,108 @@ Separately, EDPM compute nodes run the Lightbits discovery-client (installed dir
 
 | File | Description |
 |------|-------------|
-| `01-nova-lightbits-configmap.yaml` | Nova privsep config for EDPM compute nodes |
-| `02-nova-lightbits-service.yaml` | EDPM DataPlane service for Lightbits setup |
-| `03-cinder-config-snippet.yaml` | Cinder section to merge into your OpenStackControlPlane CR |
-
+| `install-01-nova-lightbits-configmap.yaml` | Nova privsep config for EDPM compute nodes |
+| `install-02-nova-lightbits-service.yaml` | EDPM DataPlane service |
+| `install-03-lightos-cinder-discovery-pvc.yaml` | PVCs for Cinder backup and discovery-client |
+| `install-04-hostnqn-daemonset.yaml` | DaemonSet to set correct NQN on OCP worker nodes |
+| `install-05-sample-config-of-cinder-and-glance.yaml` | Sample Cinder configuration for your OpenStackControlPlane CR |
 ---
 
 ## Step 1: EDPM Compute Node Setup
 
-EDPM compute nodes run `nova-compute` on bare RHEL 9.4 and need special configuration to support Lightbits NVMe/TCP volumes:
+Apply the Lightbits Nova configuration:
 
 ```bash
-oc apply -f 01-nova-lightbits-configmap.yaml
-oc apply -f 02-nova-lightbits-service.yaml
+oc apply -f 01-nova-Lightbits-configmap.yaml
+oc apply -f 02-nova-Lightbits-service.yaml
 ```
 
-Add `nova-lightbits-discovery-client` to your `OpenStackDataPlaneNodeSet` services list, then run the deployment.
+Make sure to add the `nova-Lightbits-discovery-client` service to your `OpenStackDataPlaneNodeSet` services list **before** the `nova` service.
+```yaml
+services:
+  - nova-lightbits-discovery-client
+  .
+  .
+  .
+  - nova
+```
+Also add `edpm_nova_extra_bind_mounts` to your `OpenStackDataPlaneNodeSet` `ansibleVars`:
+
+```yaml
+spec:
+  nodeTemplate:
+    ansible:
+      ansibleVars:
+        edpm_nova_extra_bind_mounts:
+          - src: /etc/discovery-client
+            dest: /etc/discovery-client
+            options: rw,z
+          - src: /etc/sudoers.d/nova-Lightbits
+            dest: /etc/sudoers.d/nova
+            options: ro
+```
+
+When the file is ready, run the deployment. This creates on each EDPM node:
+- Sudoers entry for `nova-compute` privsep-helper with `SETENV` privileges
+- `/etc/discovery-client/discovery.d/` directory
 
 ---
 
-## Step 2: Deploy the Control Plane
+## Step 2: Deploy the hostnqn DaemonSet
 
-The `03-cinder-config-snippet.yaml` file contains **only the Cinder section** — merge it into your existing `OpenStackControlPlane` CR alongside the other services (keystone, neutron, nova, galera, etc.).
-
-Replace the following placeholders before applying:
-- `<LIGHTOS_API_IP>` — Lightbits API server IP address
-- `<LIGHTOS_JWT_TOKEN>` — JWT token for Lightbits API authentication
+**Note:** The Lightbits CSI Operator must be properly installed before deploying this DaemonSet.
 
 ```bash
-# Merge the snippet into your OpenStackControlPlane CR, then apply:
+# Create ServiceAccount with privileged SCC
+oc create serviceaccount Lightbits-hostnqn -n openshift-operators
+oc adm policy add-scc-to-user privileged -z Lightbits-hostnqn -n openshift-operators
+
+# Deploy the DaemonSet
+oc apply -f install-04-hostnqn-daemonset.yaml
+```
+
+Verify:
+```bash
+oc get pods -n openshift-operators | grep hostnqn
+# On each OCP worker node:
+cat /etc/nvme/hostnqn
+# Expected: nqn.2019-09.com.Lightbitslabs:host:<node-name>.node
+```
+
+---
+
+## Step 3: Create Required PVCs
+
+```bash
+oc apply -f install-03-lightos-cinder-discovery-pvc.yaml
+```
+
+---
+
+## Step 4: Deploy the Control Plane
+
+The `install-05-sample-config-of-cinder-and-glance.yaml` contains **only the Cinder sections** — merge them into your existing `OpenStackControlPlane` CR.
+
+Replace the following placeholders:
+- `<LIGHTOS_API_IP>` — Lightbits API server IP address
+- `<LIGHTOS_JWT_TOKEN>` — JWT token for Lightbits API authentication
+- `<NFS_SERVER_IP>` — NFS server IP for Cinder backup
+
+```bash
 oc apply -f your-openstack-control-plane.yaml
 oc get openstackcontrolplane -n openstack -w
 ```
 
-### Cinder Configuration
-
-```yaml
-  cinder:
-    template:
-      cinderVolumes:
-        lightbits:
-          customServiceConfig: |
-            [DEFAULT]
-            enabled_backends = lightbits
-            default_volume_type = lightbits
-            [lightbits]
-            volume_driver = cinder.volume.drivers.lightos.LightOSVolumeDriver
-            volume_backend_name = lightos
-            lightos_api_address = <LIGHTOS_API_IP>
-            lightos_api_port = 443
-            lightos_jwt = <LIGHTOS_JWT_TOKEN>
-            lightos_default_num_replicas = 1
-            lightos_default_compression_enabled = False
-            lightos_api_service_timeout = 30
-          replicas: 1
-```
-
-No os-brick or Cinder driver patches are needed for this configuration.
-
 ---
 
-## Step 3: Post-Deployment OpenStack Configuration
+## Step 5: Post-Deployment OpenStack Configuration
 
 ```bash
 # Lightbits primary volume type
-oc exec -n openstack openstackclient -- openstack volume type create lightbits \
+oc exec -n openstack openstackclient -- openstack volume type create lightbits-volume-replica-2 \
   --property volume_backend_name=lightos
 
-# Multiattach volume type (Lightbits supports RWX block volumes)
+# Multiattach volume type
 oc exec -n openstack openstackclient -- openstack volume type create multiattach \
   --property volume_backend_name=lightos \
   --property "multiattach=<is> True"
@@ -125,57 +132,58 @@ oc exec -n openstack openstackclient -- openstack volume type create multiattach
 
 ---
 
-## Step 4: Verify Services
+## Step 6: Verify Services
 
 ```bash
 oc exec -n openstack openstackclient -- openstack volume service list
 ```
 
-Expected output:
+Expected:
 ```
 | cinder-scheduler | cinder-scheduler-0                  | nova | enabled | up |
-| cinder-volume    | cinder-volume-lightbits-0@lightbits | nova | enabled | up |
+| cinder-volume    | cinder-volume-Lightbits-0@Lightbits | nova | enabled | up |
+| cinder-backup    | cinder-backup-0                     | nova | enabled | up |
 ```
 
-Test volume creation:
+Test volume creation and backup:
 ```bash
 oc exec -n openstack openstackclient -- openstack volume create \
-  --size 1 --type lightbits test-vol
+  --size 1 --type lightbits-volume-replica-2 test-vol
 sleep 15
 oc exec -n openstack openstackclient -- openstack volume show test-vol -c status
 # Expected: status = available
-oc exec -n openstack openstackclient -- openstack volume delete test-vol
-```
 
-Test attach-to-running-VM:
-```bash
-oc exec -n openstack openstackclient -- openstack server add volume <server> test-vol
+oc exec -n openstack openstackclient -- openstack volume backup create \
+  --name test-backup test-vol
+sleep 30
+oc exec -n openstack openstackclient -- openstack volume backup show test-backup -c status
+# Expected: status = available
+
+oc exec -n openstack openstackclient -- openstack volume backup delete test-backup --force
+oc exec -n openstack openstackclient -- openstack volume delete test-vol
 ```
 
 ---
 
 ## Adding a New OCP Worker Node
 
-No Cinder-side configuration is needed on new OCP nodes — Cinder pods talk to the Lightbits API directly and don't attach volumes locally.
-
-If you add a new **EDPM compute node**, make sure the Lightbits discovery-client is installed on it per the Prerequisites section, so Nova can attach Lightbits volumes to VMs on that node.
+The `lb-csi-node` and `Lightbits-hostnqn-init` DaemonSets deploy automatically to new nodes. No manual configuration needed.
 
 ---
 
 ## Supported Operations
 
-With this configuration, Lightbits provides the following capabilities to RHOSO:
-
 | Operation | Component | Notes |
 |-----------|-----------|-------|
 | Block volumes | Cinder | Create, delete, extend, snapshot, retype |
 | Multiattach | Cinder | Single volume attached to multiple VMs simultaneously |
-| Attach to running VM | Nova | VM attaches a Lightbits volume via the EDPM discovery-client |
+| Volume backup | Cinder backup | NVMe/TCP local attach → NFS backup store |
+| Create from image | Cinder | NVMe/TCP local attach from Cinder pod |
+| Boot from volume | Nova | VM boots directly from Lightbits volume |
+| Infrastructure PVCs | CSI | Galera, RabbitMQ, Glance images |
 
 ---
 
 ## Known Limitations
 
-**Consistency groups** — not implemented in the Lightbits Cinder driver. Volumes and snapshots can be managed individually.
-
-**must-gather loop** — the RHOSO must-gather script enters an infinite loop when Cinder reports `free_capacity_gb = 'infinite'` (which Lightbits uses per Launchpad bug #1871371). Workaround: temporarily set `free_capacity_gb = 999999` and `total_capacity_gb = 999999` in the driver, collect must-gather, then revert.
+**Consistency groups** — not implemented in the Lightbits Cinder driver.

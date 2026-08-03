@@ -1,0 +1,147 @@
+# install-05-sample-config-of-cinder-and-glance.yaml
+#
+# Sample Cinder configuration for Lightbits driver and Glance using Cinder (Lightbits) as backend.
+#
+# This file contains ONLY the Cinder and Glance sections of the
+# OpenStackControlPlane CR. Merge these sections into your existing CR
+# alongside keystone, neutron, nova, galera, rabbitmq, ovn, etc.
+#
+# Replace the following placeholders:
+#   <LIGHTOS_API_IP>    - Lightbits API server IP address
+#   <LIGHTOS_JWT_TOKEN> - JWT token for Lightbits API authentication
+#   <GLANCE_PASSWORD>   - Glance service user password (from osp-secret)
+#
+# -----------------------------------------------------------------------
+
+  cinder:
+    template:
+      databaseInstance: openstack
+      secret: osp-secret
+      extraMounts:
+        # Backup store PVC mounted into cinder-backup pod
+        - name: v1
+          region: r1
+          extraVol:
+            - propagation:
+                - CinderBackup
+              extraVolType: Internal
+              mounts:
+                - name: backup-store
+                  mountPath: /var/lib/cinder/backup
+              volumes:
+                - name: backup-store
+                  persistentVolumeClaim:
+                    claimName: cinder-backup-pvc
+
+        # Discovery-client directory for NVMe/TCP local attach
+        - name: v3
+          region: r1
+          extraVol:
+            - propagation:
+                - CinderBackup
+                - CinderVolume
+              extraVolType: Internal
+              mounts:
+                - name: discovery-client-dir
+                  mountPath: /etc/discovery-client/discovery.d
+              volumes:
+                - name: discovery-client-dir
+                  persistentVolumeClaim:
+                    claimName: cinder-discovery-client-pvc
+
+        # Host node name for NVMe/TCP connectivity
+        - name: v4
+          region: r1
+          extraVol:
+            - propagation:
+                - CinderBackup
+                - CinderVolume
+              extraVolType: Internal
+              mounts:
+                - name: node-hostname
+                  mountPath: /etc/node-hostname
+              volumes:
+                - name: node-hostname
+                  hostPath:
+                    path: /etc/hostname
+                    type: File
+
+      cinderAPI:
+        replicas: 1
+        override:
+          service:
+            internal:
+              metadata:
+                annotations:
+                  metallb.universe.tf/address-pool: internalapi
+                  metallb.universe.tf/allow-shared-ip: internalapi
+              spec:
+                type: LoadBalancer
+      cinderScheduler:
+        replicas: 1
+      cinderVolumes:
+        lightbits:
+          customServiceConfig: |
+            [DEFAULT]
+            enabled_backends = lightbits
+            default_volume_type = lightbits-volume-replica-2
+            [lightbits]
+            volume_driver = cinder.volume.drivers.lightos.LightOSVolumeDriver
+            volume_backend_name = lightos
+            lightos_api_address = <LIGHTOS_API_IP>
+            lightos_api_port = 443
+            lightos_jwt = <LIGHTOS_JWT_TOKEN>
+            lightos_default_num_replicas = 2
+            lightos_default_compression_enabled = False
+            lightos_api_service_timeout = 30
+            [privsep_osbrick]
+            helper_command = sudo -E /usr/bin/privsep-helper --config-file /etc/cinder/cinder.conf --config-dir /etc/cinder/cinder.conf.d
+            capabilities = CAP_DAC_READ_SEARCH
+          replicas: 1
+      cinderBackup:
+        replicas: 1
+        customServiceConfig: |
+          [DEFAULT]
+          backup_driver = cinder.backup.drivers.nfs.NFSBackupDriver
+          backup_share = <BACKUP_NFS_SHARE>
+          backup_mount_point_base = /var/lib/cinder/backup
+          [privsep_osbrick]
+          helper_command = sudo -E /usr/bin/privsep-helper --config-file /etc/cinder/cinder.conf --config-dir /etc/cinder/cinder.conf.d
+          capabilities = CAP_DAC_READ_SEARCH
+
+  glance:
+    enabled: true
+    template:
+      databaseInstance: openstack
+      secret: osp-secret
+      keystoneEndpoint: cinder
+      glanceAPIs:
+        cinder:
+          replicas: 1
+          type: split
+          customServiceConfig: |
+            [DEFAULT]
+            enabled_backends = cinder:cinder
+            [glance_store]
+            default_backend = cinder
+            [cinder]
+            cinder_store_auth_address = https://keystone-internal.openstack.svc:5000
+            cinder_store_user_name = glance
+            cinder_store_password = <GLANCE_PASSWORD>
+            cinder_store_project_name = service
+            cinder_volume_type = lightbits-volume-replica-2
+            cinder_store_replication_enabled = False
+          override:
+            service:
+              internal:
+                metadata:
+                  annotations:
+                    metallb.universe.tf/address-pool: internalapi
+                    metallb.universe.tf/allow-shared-ip: internalapi
+                spec:
+                  type: LoadBalancer
+          tls:
+            api:
+              internal: {}
+              public: {}
+      memcachedInstance: memcached

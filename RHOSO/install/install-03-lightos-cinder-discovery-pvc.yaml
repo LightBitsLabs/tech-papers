@@ -1,0 +1,40 @@
+# Two PVCs required for LightBits local NVMe/TCP attach in RHOSO:
+#
+# 1. cinder-backup-pvc: NFS backup mount point for cinder-backup pod
+# 2. cinder-discovery-client-pvc: discovery-client .conf file directory
+#    for both cinder-volume and cinder-backup pods.
+#
+# The discovery-client PVC gets unlabeled_t SELinux context in privileged
+# OCP pods. The CAP_DAC_READ_SEARCH capability configured in
+# [privsep_osbrick] allows the privsep daemon to write to it.
+#
+# Note: A LightBits PVC is used (not emptyDir) because creating a PVC
+# establishes a persistent NVMe/TCP connection to the LightBits cluster
+# via the CSI driver. This ensures the cluster connection exists before
+# Cinder attempts local attach operations.
+#
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: cinder-backup-pvc
+  namespace: openstack
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 50Gi
+  storageClassName: lb-replica1-xfs
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: cinder-discovery-client-pvc
+  namespace: openstack
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: lb-replica1-xfs
