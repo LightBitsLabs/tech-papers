@@ -1,15 +1,21 @@
 # install-05-sample-config-of-cinder-and-glance.yaml
 #
-# Sample Cinder configuration for Lightbits driver and Glance using Cinder (Lightbits) as backend.
+# Sample Cinder and Glance configuration for Lightbits integration.
 #
 # This file contains ONLY the Cinder and Glance sections of the
 # OpenStackControlPlane CR. Merge these sections into your existing CR
 # alongside keystone, neutron, nova, galera, rabbitmq, ovn, etc.
 #
 # Replace the following placeholders:
-#   <LIGHTOS_API_IP>    - Lightbits API server IP address
-#   <LIGHTOS_JWT_TOKEN> - JWT token for Lightbits API authentication
-#   <GLANCE_PASSWORD>   - Glance service user password (from osp-secret)
+#   <LIGHTOS_API_IP>  - Lightbits API server IP address
+#   <GLANCE_PASSWORD> - Glance service user password (from osp-secret)
+#
+# The Lightbits JWT token must be stored in a Secret — see
+# install-03-lightbits-secret.yaml. Do NOT put it in customServiceConfig.
+#
+# IMPORTANT: The extraMounts section is REQUIRED for Lightbits local attach
+# (backup, create-from-image, boot-from-volume, retype) to work.
+# Do NOT remove or modify the extraMounts entries.
 #
 # -----------------------------------------------------------------------
 
@@ -18,39 +24,11 @@
       databaseInstance: openstack
       secret: osp-secret
       extraMounts:
-        # Backup store PVC mounted into cinder-backup pod
+        # REQUIRED: Host node name for NVMe/TCP connectivity.
+        # The os-brick LightOS connector reads /etc/node-hostname to connect
+        # to the discovery-client at node-IP:6060 (rather than localhost:6060
+        # which is unreachable from inside an OCP pod's network namespace).
         - name: v1
-          region: r1
-          extraVol:
-            - propagation:
-                - CinderBackup
-              extraVolType: Internal
-              mounts:
-                - name: backup-store
-                  mountPath: /var/lib/cinder/backup
-              volumes:
-                - name: backup-store
-                  persistentVolumeClaim:
-                    claimName: cinder-backup-pvc
-
-        # Discovery-client directory for NVMe/TCP local attach
-        - name: v3
-          region: r1
-          extraVol:
-            - propagation:
-                - CinderBackup
-                - CinderVolume
-              extraVolType: Internal
-              mounts:
-                - name: discovery-client-dir
-                  mountPath: /etc/discovery-client/discovery.d
-              volumes:
-                - name: discovery-client-dir
-                  persistentVolumeClaim:
-                    claimName: cinder-discovery-client-pvc
-
-        # Host node name for NVMe/TCP connectivity
-        - name: v4
           region: r1
           extraVol:
             - propagation:
@@ -65,6 +43,24 @@
                   hostPath:
                     path: /etc/hostname
                     type: File
+
+        # REQUIRED: Discovery-client directory for NVMe/TCP local attach.
+        # os-brick writes temporary .conf files here during volume attach
+        # operations. The discovery-client reads these files to establish
+        # NVMe/TCP connections. Files are deleted after disconnect.
+        - name: v2
+          region: r1
+          extraVol:
+            - propagation:
+                - CinderBackup
+                - CinderVolume
+              extraVolType: Internal
+              mounts:
+                - name: discovery-client-dir
+                  mountPath: /etc/discovery-client/discovery.d
+              volumes:
+                - name: discovery-client-dir
+                  emptyDir: {}
 
       cinderAPI:
         replicas: 1
@@ -90,24 +86,17 @@
             volume_backend_name = lightos
             lightos_api_address = <LIGHTOS_API_IP>
             lightos_api_port = 443
-            lightos_jwt = <LIGHTOS_JWT_TOKEN>
             lightos_default_num_replicas = 2
             lightos_default_compression_enabled = False
             lightos_api_service_timeout = 30
             [privsep_osbrick]
             helper_command = sudo -E /usr/bin/privsep-helper --config-file /etc/cinder/cinder.conf --config-dir /etc/cinder/cinder.conf.d
             capabilities = CAP_DAC_READ_SEARCH
+            [os_brick]
+            lightos_discovery_client_address = localhost
+          customServiceConfigSecrets:
+            - cinder-volume-lightbits-secret
           replicas: 1
-      cinderBackup:
-        replicas: 1
-        customServiceConfig: |
-          [DEFAULT]
-          backup_driver = cinder.backup.drivers.nfs.NFSBackupDriver
-          backup_share = <BACKUP_NFS_SHARE>
-          backup_mount_point_base = /var/lib/cinder/backup
-          [privsep_osbrick]
-          helper_command = sudo -E /usr/bin/privsep-helper --config-file /etc/cinder/cinder.conf --config-dir /etc/cinder/cinder.conf.d
-          capabilities = CAP_DAC_READ_SEARCH
 
   glance:
     enabled: true

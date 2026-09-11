@@ -1,10 +1,10 @@
-# OpenStackDataPlaneService for LightBits integration on EDPM compute nodes.
+# OpenStackDataPlaneService for Lightbits integration on EDPM compute nodes.
 #
-# This service:
-# 1. Creates the sudoers file for nova privsep-helper with SETENV privileges
-# 2. Ensures /etc/discovery-client/discovery.d/ exists on the host
+# This service ensures /etc/discovery-client/discovery.d/ exists on the EDPM
+# host so that os-brick can write NVMe/TCP discovery configuration files
+# during volume attach operations.
 #
-# The actual bind mounts into nova_compute are handled via
+# The actual bind mount into nova_compute is handled via
 # edpm_nova_extra_bind_mounts in the OpenStackDataPlaneNodeSet ansibleVars:
 #
 #   nodeTemplate:
@@ -14,13 +14,10 @@
 #           - src: /etc/discovery-client
 #             dest: /etc/discovery-client
 #             options: rw,z
-#           - src: /etc/sudoers.d/nova-lightbits
-#             dest: /etc/sudoers.d/nova
-#             options: ro
 #
 # Add "nova-lightbits-discovery-client" to your OpenStackDataPlaneNodeSet
-# services list BEFORE "nova" so the sudoers file and directory exist
-# when nova_compute is first created.
+# services list BEFORE "nova" so the directory exists when nova_compute
+# is first created.
 #
 apiVersion: dataplane.openstack.org/v1beta1
 kind: OpenStackDataPlaneService
@@ -33,15 +30,6 @@ spec:
     - hosts: all
       become: true
       tasks:
-        - name: Create nova sudoers file with SETENV for privsep-helper
-          ansible.builtin.copy:
-            dest: /etc/sudoers.d/nova-lightbits
-            mode: '0440'
-            content: |
-              Defaults:nova !requiretty
-              nova ALL = (root) NOPASSWD: /usr/bin/nova-rootwrap /etc/nova/rootwrap.conf *
-              nova ALL = (root) SETENV: NOPASSWD: /usr/bin/privsep-helper *
-
         - name: Ensure /etc/discovery-client/discovery.d directory exists
           ansible.builtin.file:
             path: /etc/discovery-client/discovery.d

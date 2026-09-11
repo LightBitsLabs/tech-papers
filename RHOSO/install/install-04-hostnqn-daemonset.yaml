@@ -27,22 +27,22 @@ spec:
             - /bin/sh
             - -c
             - |
-              echo "Checking if LightBits CSI discovery-client is running..."
+              echo "Checking if Lightbits CSI discovery-client is running..."
 
               # Wait up to 60 seconds for the discovery-client to be available
               RETRIES=12
               INTERVAL=5
               for i in $(seq 1 $RETRIES); do
                 if curl -s --max-time 3 http://localhost:6060/metrics > /dev/null 2>&1; then
-                  echo "LightBits CSI discovery-client found on localhost:6060"
+                  echo "Lightbits CSI discovery-client found on localhost:6060"
                   break
                 fi
                 if [ $i -eq $RETRIES ]; then
-                  echo "ERROR: LightBits CSI discovery-client not found on localhost:6060 after $((RETRIES * INTERVAL)) seconds."
-                  echo "Please ensure the LightBits CSI Operator is installed and the lb-csi-node DaemonSet is running."
+                  echo "ERROR: Lightbits CSI discovery-client not found on localhost:6060 after $((RETRIES * INTERVAL)) seconds."
+                  echo "Please ensure the Lightbits CSI Operator is installed and the lb-csi-node DaemonSet is running."
                   exit 1
                 fi
-                echo "Waiting for LightBits CSI discovery-client... attempt $i/$RETRIES"
+                echo "Waiting for Lightbits CSI discovery-client... attempt $i/$RETRIES"
                 sleep $INTERVAL
               done
 
@@ -50,20 +50,19 @@ spec:
               NQN=$(curl -s http://localhost:6060/metrics | grep -oP 'hostnqn="\K[^"]+' | head -1)
 
               if [ -z "$NQN" ]; then
-                echo "ERROR: Could not retrieve hostnqn from LightBits CSI discovery-client metrics."
-                echo "Please ensure the LightBits CSI Operator is installed and the lb-csi-node DaemonSet is running."
+                echo "ERROR: Could not retrieve hostnqn from Lightbits CSI discovery-client metrics."
+                echo "Please ensure the Lightbits CSI Operator is installed and the lb-csi-node DaemonSet is running."
                 exit 1
               fi
 
-              echo "Retrieved hostnqn from LightBits CSI discovery-client: ${NQN}"
+              echo "Retrieved hostnqn from Lightbits CSI discovery-client: ${NQN}"
 
               # Write to host /etc/nvme/hostnqn
-              mkdir -p /host/etc/nvme
               echo "${NQN}" > /host/etc/nvme/hostnqn
               echo "Successfully set /etc/nvme/hostnqn to: ${NQN}"
           volumeMounts:
-            - name: host-etc
-              mountPath: /host/etc
+            - name: host-nvme
+              mountPath: /host/etc/nvme
       containers:
         - name: pause
           image: registry.access.redhat.com/ubi9/ubi-minimal:latest
@@ -79,8 +78,9 @@ spec:
               cpu: 10m
               memory: 16Mi
       volumes:
-        - name: host-etc
+        - name: host-nvme
           hostPath:
-            path: /etc
+            path: /etc/nvme
+            type: DirectoryOrCreate
       nodeSelector:
         node-role.kubernetes.io/worker: ""
