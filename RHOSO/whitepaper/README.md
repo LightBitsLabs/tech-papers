@@ -1,3 +1,5 @@
+# **DO NOT USE ANY OF THE SCRIPTS IN THIS DIRECTORY - IT IS OBSOLETE!!!**
+
 # RHOSO 18 + LightBits Integration
 
 This directory contains the configuration files required to integrate LightBits LightOS storage with Red Hat OpenStack Services on OpenShift (RHOSO) 18.
