@@ -96,6 +96,7 @@
             - cinder-volume-lightbits-secret
           networkAttachments:
             - storage
+            - storageMgmt
           replicas: 1
 
   glance:
