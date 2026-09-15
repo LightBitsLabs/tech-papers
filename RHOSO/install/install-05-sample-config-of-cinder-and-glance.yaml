@@ -6,12 +6,10 @@
 # OpenStackControlPlane CR. Merge these sections into your existing CR
 # alongside keystone, neutron, nova, galera, rabbitmq, ovn, etc.
 #
-# Replace the following placeholders:
-#   <LIGHTOS_API_IP>  - Lightbits API server IP address
-#   <GLANCE_PASSWORD> - Glance service user password (from osp-secret)
-#
-# The Lightbits JWT token must be stored in a Secret — see
-# install-03-lightbits-secret.yaml. Do NOT put it in customServiceConfig.
+# All sensitive values (JWT token, API address, Glance password) must be
+# stored in Secrets — see install-03-lightbits-secret.yaml for the Cinder
+# Secret and install-03-lightbits-glance-secret.yaml for the Glance Secret.
+# Do NOT put sensitive values in customServiceConfig.
 #
 # IMPORTANT: The extraMounts section is REQUIRED for Lightbits local attach
 # (backup, create-from-image, boot-from-volume, retype) to work.
@@ -38,6 +36,7 @@
               mounts:
                 - name: node-hostname
                   mountPath: /etc/node-hostname
+                  readOnly: true
               volumes:
                 - name: node-hostname
                   hostPath:
@@ -48,6 +47,7 @@
         # os-brick writes temporary .conf files here during volume attach
         # operations. The discovery-client reads these files to establish
         # NVMe/TCP connections. Files are deleted after disconnect.
+        # An emptyDir is sufficient since the files are transient.
         - name: v2
           region: r1
           extraVol:
@@ -84,8 +84,6 @@
             [lightbits]
             volume_driver = cinder.volume.drivers.lightos.LightOSVolumeDriver
             volume_backend_name = lightos
-            lightos_api_address = <LIGHTOS_API_IP>
-            lightos_api_port = 443
             lightos_default_num_replicas = 2
             lightos_default_compression_enabled = False
             lightos_api_service_timeout = 30
@@ -96,6 +94,8 @@
             lightos_discovery_client_address = localhost
           customServiceConfigSecrets:
             - cinder-volume-lightbits-secret
+          networkAttachments:
+            - storage
           replicas: 1
 
   glance:
@@ -116,10 +116,11 @@
             [cinder]
             cinder_store_auth_address = https://keystone-internal.openstack.svc:5000
             cinder_store_user_name = glance
-            cinder_store_password = <GLANCE_PASSWORD>
             cinder_store_project_name = service
             cinder_volume_type = lightbits-volume-replica-2
             cinder_store_replication_enabled = False
+          customServiceConfigSecrets:
+            - glance-lightbits-secret
           override:
             service:
               internal:

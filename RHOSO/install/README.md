@@ -31,7 +31,8 @@ This guide uses two distinct storage naming layers that are independent of each 
 |------|-------------|
 | `install-01-nova-lightbits-configmap.yaml` | Nova privsep config for EDPM compute nodes |
 | `install-02-nova-lightbits-service.yaml` | EDPM DataPlane service |
-| `install-03-lightbits-secret.yaml` | Secret storing the Lightbits JWT token |
+| `install-03-lightbits-secret.yaml` | Secret storing the Lightbits API address and JWT token |
+| `install-03-lightbits-glance-secret.yaml` | Secret storing the Glance credentials for the Lightbits Cinder backend |
 | `install-04-hostnqn-daemonset.yaml` | DaemonSet to set correct NQN on OCP worker nodes |
 | `install-05-sample-config-of-cinder-and-glance.yaml` | Sample Cinder and Glance configuration for your OpenStackControlPlane CR |
 
@@ -84,22 +85,27 @@ cat /etc/nvme/hostnqn
 
 ---
 
-## Step 3: Create the Lightbits JWT Secret
+## Step 3: Create the Lightbits Secrets
 
-Edit `install-03-lightbits-secret.yaml` and replace `<LIGHTOS_JWT_TOKEN>` with your actual JWT token, then apply:
+Edit `install-03-lightbits-secret.yaml` and replace:
+- `<LIGHTOS_API_IP>` — Lightbits API server IP address
+- `<LIGHTOS_JWT_TOKEN>` — JWT token for Lightbits API authentication
+
+Edit `install-03-lightbits-glance-secret.yaml` and replace:
+- `<GLANCE_PASSWORD>` — Glance service user password (found in `osp-secret` under the `GlancePassword` key)
+
+Then apply both:
 
 ```bash
 oc apply -f install-03-lightbits-secret.yaml
+oc apply -f install-03-lightbits-glance-secret.yaml
 ```
 
 ---
 
 ## Step 4: Deploy the Control Plane
 
-Merge the Lightbits-specific Cinder and Glance configuration from `install-05-sample-config-of-cinder-and-glance.yaml` into your existing `OpenStackControlPlane` CR, replacing the following placeholders:
-
-- `<LIGHTOS_API_IP>` — Lightbits API server IP address
-- `<GLANCE_PASSWORD>` — Glance service user password (from osp-secret)
+Merge the Lightbits-specific Cinder and Glance configuration from `install-05-sample-config-of-cinder-and-glance.yaml` into your existing `OpenStackControlPlane` CR.
 
 ```bash
 oc apply -f your-openstack-control-plane.yaml
@@ -127,6 +133,8 @@ oc exec -n openstack openstackclient -- openstack volume type create multiattach
 
 ## Step 6: Verify
 
+Check that all Cinder services are running:
+
 ```bash
 oc exec -n openstack openstackclient -- openstack volume service list
 ```
@@ -136,6 +144,18 @@ Expected:
 | cinder-scheduler | cinder-scheduler-0                  | nova | enabled | up |
 | cinder-volume    | cinder-volume-lightbits-0@lightbits | nova | enabled | up |
 | cinder-backup    | cinder-backup-0                     | nova | enabled | up |
+```
+
+Verify the backend is working by creating and deleting a test volume:
+
+```bash
+oc exec -n openstack openstackclient -- openstack volume create \
+  --size 1 --type lightbits-volume-replica-2 test-vol
+
+oc exec -n openstack openstackclient -- openstack volume show test-vol -c status
+# Expected: available
+
+oc exec -n openstack openstackclient -- openstack volume delete test-vol
 ```
 
 ---
