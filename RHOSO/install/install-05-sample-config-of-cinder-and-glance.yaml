@@ -89,7 +89,7 @@
             lightos_api_service_timeout = 30
             [privsep_osbrick]
             helper_command = sudo -E /usr/bin/privsep-helper --config-file /etc/cinder/cinder.conf --config-dir /etc/cinder/cinder.conf.d
-            capabilities = CAP_DAC_READ_SEARCH
+            capabilities = CAP_SYS_ADMIN, CAP_DAC_READ_SEARCH
             [os_brick]
             lightos_discovery_client_address = localhost
           customServiceConfigSecrets:
