@@ -2,6 +2,7 @@
 
 This guide covers the steps required to integrate Lightbits disaggregated NVMe/TCP storage with Red Hat OpenStack Services on OpenShift (RHOSO) 18.
 
+**⚠️ Important: After completing this setup, you must apply the workaround patches in the [patch/](patch/) directory before Lightbits local attach operations will work on RHOSO 18.0.22.**
 ---
 
 ## Naming Conventions
